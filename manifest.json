@@ -1,0 +1,12 @@
+{
+  "name": "MCP Design System Token Sync",
+  "id": "mcp-design-system-token-sync",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["*"],
+    "reasoning": "This plugin needs to fetch design tokens from the MCP Design System API"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "figma-design-system-mcp-plugin",
+  "version": "1.0.0",
+  "description": "A Figma plugin to sync MCP Design System tokens to Figma styles",
+  "main": "code.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start:server": "node dist/server.js",
+    "dev:server": "ts-node server.ts"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.82.0",
+    "@types/body-parser": "^1.19.5",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.19",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
