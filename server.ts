@@ -1,26 +1,31 @@
 import express from 'express';
 import cors from 'cors';
-import { Request, Response } from 'express';
 
 const app = express();
 
-// Configure CORS to allow all origins
+// Configure CORS to allow all origins and handle preflight
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Accept'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Accept', 'ngrok-skip-browser-warning'],
+  exposedHeaders: ['Content-Type', 'Accept'],
+  credentials: true,
+  maxAge: 86400
 }));
 
 app.use(express.json());
 
+// Log all requests
+app.use((req, res, next) => {
+  console.log(`📨 ${req.method} ${req.path}`);
+  console.log('Headers:', req.headers);
+  next();
+});
+
 let latestInstructions: any = null;
 
-// Add OPTIONS handler for preflight requests
-app.options('*', cors());
-
 // Endpoint to receive instructions from n8n
-app.post('/figma-webhook', (req: Request, res: Response) => {
+app.post('/figma-webhook', (req, res) => {
   try {
     latestInstructions = req.body.instructions;
     console.log('✅ Received instructions via webhook:', latestInstructions);
@@ -32,24 +37,19 @@ app.post('/figma-webhook', (req: Request, res: Response) => {
 });
 
 // Endpoint for the plugin to fetch instructions
-app.get('/get-instructions', (req: Request, res: Response) => {
+app.get('/get-instructions', (req, res) => {
   try {
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // Set header to prevent ngrok warning page
+    res.setHeader('ngrok-skip-browser-warning', '1');
     res.json({ instructions: latestInstructions });
+    console.log('📤 Sending instructions:', latestInstructions);
   } catch (error) {
     console.error('❌ Error fetching instructions:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Error handling middleware
-app.use((err: any, req: Request, res: Response, next: any) => {
-  console.error('❌ Server error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
 app.listen(3000, () => {
-  console.log('🚀 Figma plugin server listening on http://localhost:3000');
+  console.log('🚀 Server running on http://localhost:3000');
 });
   
