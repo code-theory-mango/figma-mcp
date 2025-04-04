@@ -5,6 +5,7 @@
     "typeRoots": ["./node_modules/@figma"],
     "moduleResolution": "node",
     "strict": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true
   }
 } 
