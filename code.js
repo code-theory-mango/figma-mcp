@@ -148,7 +148,7 @@ function pollForInstructions() {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
         try {
-            const res = yield fetch('https://ade6-38-74-197-217.ngrok-free.app/get-instructions', {
+            const res = yield fetch('https://3c3b-38-74-197-217.ngrok-free.app/get-instructions', {
                 headers: { 'ngrok-skip-browser-warning': '1' }
             });
             const data = yield res.json();

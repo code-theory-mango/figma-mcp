@@ -188,7 +188,7 @@ async function createDesign(instructions: DesignInstruction[]) {
 // Poll for instructions
 async function pollForInstructions() {
   try {
-    const res = await fetch('https://ade6-38-74-197-217.ngrok-free.app/get-instructions', {
+    const res = await fetch('https://3c3b-38-74-197-217.ngrok-free.app/get-instructions', {
       headers: { 'ngrok-skip-browser-warning': '1' }
     });
     
