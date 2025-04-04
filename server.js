@@ -22,7 +22,7 @@ let latestInstructions = null;
 app.post('/figma-webhook', (req, res) => {
     try {
         latestInstructions = req.body.instructions;
-        console.log('✅ Received instructions via webhook:', latestInstructions);
+        console.log("✅ Received instructions via webhook:\n", JSON.stringify(req.body.instructions, null, 2));
         res.sendStatus(200);
     }
     catch (error) {
@@ -35,8 +35,12 @@ app.get('/get-instructions', (req, res) => {
     try {
         // Set header to prevent ngrok warning page
         res.setHeader('ngrok-skip-browser-warning', '1');
-        res.json({ instructions: latestInstructions });
-        console.log('📤 Sending instructions:', latestInstructions);
+        // Get current instructions and clear them
+        const instructions = latestInstructions;
+        latestInstructions = null;
+        res.json({ instructions });
+        console.log('📤 Sending instructions:', instructions);
+        console.log('🧹 Cleared instructions cache');
     }
     catch (error) {
         console.error('❌ Error fetching instructions:', error);
