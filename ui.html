@@ -192,6 +192,45 @@
         submitButton.disabled = false;
       }
     };
+  
+    const socket = new WebSocket('wss://6d9b-38-74-197-217.ngrok-free.app'); // Change this to your actual WSS endpoint
+
+      socket.onopen = () => {
+        console.log('🔌 Connected to WebSocket server');
+        addMessage('🔌 Connected to WebSocket server');
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('📥 WebSocket message received:', data);
+          
+          // Forward instructions to code.ts
+          parent.postMessage({
+            pluginMessage: {
+              type: 'websocket-instructions',
+              data: data
+            }
+          }, '*');
+          
+          addMessage('📨 Instructions received via WebSocket');
+        } catch (err) {
+          console.error('❌ Failed to parse WebSocket message:', err);
+          addMessage('⚠️ Error parsing WebSocket message');
+        }
+      };
+
+      socket.onerror = (err) => {
+        console.error('❌ WebSocket error:', err);
+        addMessage('❌ WebSocket connection error');
+      };
+
+      socket.onclose = () => {
+        console.warn('🔌 WebSocket connection closed');
+        addMessage('🔌 Disconnected from WebSocket server');
+      };
+
+
 
     submitButton.onclick = handleSubmit;
     userInput.onkeypress = (e) => {

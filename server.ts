@@ -1,9 +1,12 @@
 import express from 'express';
 import cors from 'cors';
+import http from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
 
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
-// Configure CORS to allow all origins and handle preflight
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -22,13 +25,30 @@ app.use((req, res, next) => {
   next();
 });
 
-let latestInstructions: any = null;
+let connectedClients: WebSocket[] = [];
+
+wss.on('connection', (ws: WebSocket) => {
+  console.log('🔌 Plugin connected via WebSocket');
+  connectedClients.push(ws);
+
+  ws.on('close', () => {
+    connectedClients = connectedClients.filter(c => c !== ws);
+    console.log('❌ Plugin disconnected');
+  });
+});
 
 // Endpoint to receive instructions from n8n
 app.post('/figma-webhook', (req, res) => {
   try {
-    latestInstructions = req.body.instructions;
-    console.log("✅ Received instructions via webhook:\n", JSON.stringify(req.body.instructions, null, 2));
+    const instructions = req.body.instructions;
+    console.log("✅ Received instructions via webhook:\n", JSON.stringify(instructions, null, 2));
+
+    // Broadcast to all connected WebSocket clients
+    connectedClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ instructions }));
+      }
+    });
 
     res.sendStatus(200);
   } catch (error) {
@@ -37,26 +57,17 @@ app.post('/figma-webhook', (req, res) => {
   }
 });
 
-// Endpoint for the plugin to fetch instructions
+// (Optional) Fallback GET endpoint if you want to support polling as backup
 app.get('/get-instructions', (req, res) => {
   try {
-    // Set header to prevent ngrok warning page
     res.setHeader('ngrok-skip-browser-warning', '1');
-    
-    // Get current instructions and clear them
-    const instructions = latestInstructions;
-    latestInstructions = null;
-    
-    res.json({ instructions });
-    console.log('📤 Sending instructions:', instructions);
-    console.log('🧹 Cleared instructions cache');
+    res.json({ instructions: null }); // Not used anymore
   } catch (error) {
     console.error('❌ Error fetching instructions:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-app.listen(3000, () => {
+server.listen(3000, () => {
   console.log('🚀 Server running on http://localhost:3000');
 });
-  
