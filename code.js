@@ -222,10 +222,10 @@ function createFramesFromSpecs(frameData) {
         let overallCurrentY = figma.currentPage.children.length > 0
             ? figma.currentPage.children.reduce((maxY, node) => Math.max(maxY, node.y + node.height), 0) + 150
             : 100; // Start below existing content or at 100
-        const groupSpacingY = 500; // Increased from 80
+        const groupSpacingY = 500; // space between groups
         const titleSpacingY = 70; // Space between title and frames within a group
         const frameSpacingX = 40;
-        const frameSpacingY = 40;
+        const frameSpacingY = 60;
         const wrapWidth = figma.viewport.bounds.width * 0.8; // Wrap width for frames
         // Load font for titles
         try {

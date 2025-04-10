@@ -200,10 +200,17 @@
       margin-bottom: 2px;
     }
 
+    /* NEW: Style for red numbers */
+    .red-number {
+        color: #E53935; /* A medium red color */
+        font-weight: bold; /* Optional: Make numbers bold */
+    }
+
     /* NEW: Style for the count */
     #selection-count {
         font-weight: normal;
-        color: #888;
+        /* color: #888; */ /* Remove default grey if applying red */
+        /* Apply red class using JavaScript or wrap in span */
     }
   </style>
 </head>
@@ -220,7 +227,7 @@
     
     <!-- <<< NEW: Selection Display Area >>> -->
     <div id="selection-info" class="selection-display">
-      <strong>Selected Frames: <span id="selection-count">(0)</span></strong>
+      <strong>Selected Frames: (<span id="selection-count" class="red-number">0</span>)</strong>
       <span id="selected-names">None</span>
     </div>
 
@@ -286,26 +293,27 @@
 
       // <<< ADDED: Handle selection update >>>
       if (msg.type === 'update-selection') {
-        const names = msg.names || []; // Default to empty array
+        const names = msg.names || []; 
         const count = names.length;
+        const selectedNamesSpan = document.getElementById('selected-names');
+        const selectionCountSpan = document.getElementById('selection-count'); 
 
-        // Update count display
-        const selectionCountSpan = document.getElementById('selection-count');
-        selectionCountSpan.textContent = `(${count})`;
+        // Update count display (now just the number)
+        selectionCountSpan.textContent = count; // Update only the number
 
         if (count > 0) {
-          // Format names: number, truncate, join
-          const formattedNames = names.map((name, index) => {
-            const truncatedName = name.length > 16 
-                                ? name.substring(0, 16) + '...' 
+          // Format names: wrap number in span.red-number
+          const formattedHtml = names.map((name, index) => {
+            const truncatedName = name.length > 50 
+                                ? name.substring(0, 50) + '...' 
                                 : name;
-            return `${index + 1}. ${truncatedName}`; 
-          }).join(',  '); // Add extra space after comma for readability
-          const selectedNamesSpan = document.getElementById('selected-names');
-          selectedNamesSpan.textContent = formattedNames;
+            // <<< Wrap number in span.red-number >>>
+            return `<div><span class="red-number">${index + 1}.</span> ${truncatedName}</div>`; 
+          }).join(''); 
+          
+          selectedNamesSpan.innerHTML = formattedHtml;
         } else {
-          const selectedNamesSpan = document.getElementById('selected-names');
-          selectedNamesSpan.textContent = 'None';
+          selectedNamesSpan.textContent = 'None'; 
         }
       }
     };
