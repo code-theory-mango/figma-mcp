@@ -247,60 +247,158 @@ async function createDesign(payload: ServerPayload) {
   console.log('✅ Design creation complete.');
 }
 
-// <<< NEW FUNCTION: Create Frames from Specs >>>
-function createFramesFromSpecs(frameData: { name: string, width: number, height: number }[]) {
-  console.log(`📐 Creating ${frameData.length} frames from CSV data...`);
-  
-  // Simple layout variables
-  const startX = 100;
-  const startY = figma.currentPage.children.length * 100 + 300; // Start below existing content
-  const spacingX = 50;
-  const spacingY = 50;
-  let currentX = startX;
-  let currentY = startY;
-  let rowMaxHeight = 0;
-  const wrapWidth = figma.viewport.bounds.width * 0.8; // Wrap roughly within viewport width
+// <<< UPDATED FUNCTION: Create Frames from Specs (Grouped) >>>
+async function createFramesFromSpecs(frameData: { name: string, width: number, height: number }[]) {
+  console.log(`📐 Grouping and creating ${frameData.length} frames from CSV data...`);
 
+  // 1. Group frame data by size (e.g., "1920x1080")
+  const groupedBySize = new Map<string, Array<{ name: string, width: number, height: number }>>();
   for (const spec of frameData) {
-    console.log(`  Creating frame: ${spec.name} (${spec.width}x${spec.height})`);
-    try {
-      const frame = figma.createFrame();
-      frame.name = spec.name; // Use name from CSV
-      frame.resize(spec.width, spec.height);
-      frame.x = currentX;
-      frame.y = currentY;
-      // Simple white fill
-      frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }]; 
-      // Add stroke for visibility
-      frame.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
-      frame.strokeWeight = 1;
-
-      figma.currentPage.appendChild(frame);
-
-      // Update layout position for next frame
-      currentX += frame.width + spacingX;
-      rowMaxHeight = Math.max(rowMaxHeight, frame.height);
-
-      // Wrap to next row if needed
-      if (currentX > startX + wrapWidth) {
-        currentX = startX;
-        currentY += rowMaxHeight + spacingY;
-        rowMaxHeight = 0; // Reset for new row
-      }
-
-    } catch (err) {
-      console.error(`❌ Error creating frame "${spec.name}":`, err);
-      // Optionally notify UI: figma.ui.postMessage({ type: 'error', ... });
+    const sizeKey = `${spec.width}x${spec.height}`;
+    if (!groupedBySize.has(sizeKey)) {
+      groupedBySize.set(sizeKey, []);
     }
+    groupedBySize.get(sizeKey)!.push(spec); // Add spec to the group
+  }
+  console.log(`📊 Found ${groupedBySize.size} unique size groups.`);
+
+  // --- Determine contrasting text color based on page background --- 
+  let titleColor: RGB = { r: 0, g: 0, b: 0 }; // Default to black
+  const pageBackgrounds = figma.currentPage.backgrounds;
+  if (pageBackgrounds.length > 0 && pageBackgrounds[0].type === 'SOLID') {
+    const bgColor = pageBackgrounds[0].color;
+    // Calculate relative luminance (simplified check for demo)
+    // A more accurate formula considers gamma correction, but this is often sufficient:
+    const luminance = 0.2126 * bgColor.r + 0.7152 * bgColor.g + 0.0722 * bgColor.b;
+    if (luminance < 0.5) { // If background is dark
+      titleColor = { r: 1, g: 1, b: 1 }; // Use white text
+      console.log(`ℹ️ Page background is dark (L=${luminance.toFixed(2)}), using white title text.`);
+    } else {
+      console.log(`ℹ️ Page background is light (L=${luminance.toFixed(2)}), using black title text.`);
+    } 
+  } else {
+     console.log("ℹ️ No solid page background found, defaulting title text to black.");
+  }
+  // --- End text color determination ---
+
+  // Layout variables
+  const startX = 100;
+  let overallCurrentY = figma.currentPage.children.length > 0 
+                      ? figma.currentPage.children.reduce((maxY, node) => Math.max(maxY, node.y + node.height), 0) + 150 
+                      : 100; // Start below existing content or at 100
+  const groupSpacingY = 500; // Increased from 80
+  const titleSpacingY = 70; // Space between title and frames within a group
+  const frameSpacingX = 40;
+  const frameSpacingY = 40;
+  const wrapWidth = figma.viewport.bounds.width * 0.8; // Wrap width for frames
+
+  // Load font for titles
+  try {
+      await figma.loadFontAsync({ family: "Inter", style: "Bold" });
+      console.log("✅ Title font loaded (Inter Bold).")
+  } catch (e) {
+      console.error("❌ Failed to load title font. Titles will use default font.", e);
+      // Continue without bold titles if loading fails
   }
 
-  console.log('✅ Frame creation from CSV complete.');
+  // 2. Iterate through each size group
+  for (const [sizeKey, framesInGroup] of groupedBySize.entries()) {
+    const [groupWidth, groupHeight] = sizeKey.split('x').map(Number);
+    console.log(`-- Processing Group: ${sizeKey} (${framesInGroup.length} frames) --`);
+
+    // A. Create Size Title Text Node
+    const titleText = figma.createText();
+    try {
+        titleText.fontName = { family: "Inter", style: "Bold" };
+    } catch (e) { /* Font failed loading */ }
+    titleText.characters = `${groupWidth} x ${groupHeight}`;
+    titleText.fontSize = 80; // User modified
+    titleText.fills = [{ type: 'SOLID', color: titleColor }]; 
+    titleText.x = startX;
+    titleText.y = overallCurrentY;
+    figma.currentPage.appendChild(titleText);
+    console.log(`  📄 Added title "${titleText.characters}" at Y=${overallCurrentY.toFixed(0)}`);
+
+    // B. Layout Frames for this group
+    let groupCurrentX = startX;
+    let groupCurrentY = overallCurrentY + titleText.height + titleSpacingY; // Start frames below title
+    let groupRowMaxHeight = 0;
+    let groupMaxYReached = groupCurrentY; // Track lowest point *within* this group layout
+
+    for (const spec of framesInGroup) {
+      // Create frame
+      console.log(`    🖼️ Creating frame: ${spec.name} (${spec.width}x${spec.height})`);
+      try {
+        const frame = figma.createFrame();
+        frame.name = spec.name;
+        frame.resize(spec.width, spec.height);
+        frame.x = groupCurrentX;
+        frame.y = groupCurrentY;
+        frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }]; 
+        frame.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
+        frame.strokeWeight = 1;
+        figma.currentPage.appendChild(frame);
+
+        // Update layout coords for next frame in group
+        groupCurrentX += frame.width + frameSpacingX;
+        groupRowMaxHeight = Math.max(groupRowMaxHeight, frame.height);
+        groupMaxYReached = Math.max(groupMaxYReached, frame.y + frame.height); // Track lowest edge
+
+        // Wrap within group
+        if (groupCurrentX > startX + wrapWidth && framesInGroup.indexOf(spec) < framesInGroup.length - 1) { // Don't wrap if it's the last item
+          groupCurrentX = startX;
+          groupCurrentY += groupRowMaxHeight + frameSpacingY;
+          groupRowMaxHeight = 0; // Reset for new row
+          groupMaxYReached = Math.max(groupMaxYReached, groupCurrentY); // Update needed if starting new row
+        }
+      } catch (err) {
+        console.error(`    ❌ Error creating frame "${spec.name}":`, err);
+      }
+    } // End loop for frames within group
+
+    // C. Update overall Y for the next group's title
+    overallCurrentY = groupMaxYReached + groupSpacingY; 
+    console.log(`  -- Group ${sizeKey} finished. Next group starts at Y=${overallCurrentY.toFixed(0)} --`);
+
+  } // End loop for size groups
+
+  console.log('✅ Frame creation from CSV complete (grouped).');
+  
   // Notify UI of completion (optional)
   figma.ui.postMessage({
     type: 'csv-frames-created',
-    message: `Created ${frameData.length} frames.`
+    message: `Created ${frameData.length} frames, grouped by size.`
   });
 }
+
+// --- Selection Handling ---
+
+function sendSelectionUpdate() {
+  const selectedFrames = figma.currentPage.selection.filter(
+    node => node.type === 'FRAME'
+  ) as FrameNode[]; // Filter for frames
+  
+  const selectedNames = selectedFrames.map(frame => frame.name);
+  console.log('📤 Sending selection update to UI:', selectedNames);
+  
+  figma.ui.postMessage({
+    type: 'update-selection',
+    names: selectedNames
+  });
+}
+
+// Listen for selection changes in Figma
+figma.on('selectionchange', () => {
+  sendSelectionUpdate();
+});
+
+// --- Initial Setup ---
+
+figma.showUI(__html__);
+figma.ui.resize(400, 600);
+
+// Send initial selection state when plugin loads
+sendSelectionUpdate(); 
 
 // --- LISTEN FOR UI MESSAGE TRIGGERED BY WEBSOCKET ---
 
