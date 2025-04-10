@@ -26,9 +26,18 @@ interface FrameStyle {
   height: number;
 }
 
+interface LogoInstruction {
+  name: string;
+  componentKey: string;
+  placement: Placement;
+  dimensions: { width: number; height: number; };
+  alignment?: string;
+}
+
 interface TypographyContent {
   textNodes: TextNodeInstruction[];
   frame: FrameStyle;
+  logos?: LogoInstruction[];
 }
 
 interface Instruction {
@@ -94,11 +103,17 @@ async function createDesign(payload: ServerPayload) {
 
   const frameStyle = content.frame;
   const textNodesInstructions = content.textNodes;
+  const logoInstructions = content.logos || [];
 
+  // --- 1. Preload Fonts ---
   const fontsToLoad = new Map<string, FontName>();
   for (const nodeInstruction of textNodesInstructions) {
     const style = nodeInstruction.style;
-    const figmaFontStyle = style.fontStyle || getFontStyle(style.fontWeight);
+    if (!style.fontFamily) {
+      console.warn(`  ⚠️ Skipping font loading for node "${nodeInstruction.name}" due to missing fontFamily.`);
+      continue;
+    }
+    const figmaFontStyle = style.fontStyle ? style.fontStyle : getFontStyle(style.fontWeight);
     const fontName: FontName = { family: style.fontFamily, style: figmaFontStyle };
     const fontKey = `${fontName.family}-${fontName.style}`;
     if (!fontsToLoad.has(fontKey)) {
@@ -136,30 +151,42 @@ async function createDesign(payload: ServerPayload) {
   figma.currentPage.appendChild(container);
   console.log(`✅ Created container: ${container.name} (${container.width}x${container.height})`);
 
+  // --- 3. Create Text Nodes ---
   console.log(`🏗️ Processing ${textNodesInstructions.length} text nodes...`);
 
   for (const nodeInstruction of textNodesInstructions) {
     console.log(`  Creating node: ${nodeInstruction.name}`);
     const style = nodeInstruction.style;
     const placement = nodeInstruction.placement;
-    const figmaFontStyle = style.fontStyle || getFontStyle(style.fontWeight);
-    const targetFontName: FontName = { family: style.fontFamily, style: figmaFontStyle };
+    const figmaFontStyle = style.fontStyle ? style.fontStyle : getFontStyle(style.fontWeight);
+    const targetFontName: FontName = { family: style.fontFamily || "Inter", style: figmaFontStyle };
 
     try {
       const text = figma.createText();
       text.name = nodeInstruction.name;
 
       try {
-        text.fontName = targetFontName;
+        if (style.fontFamily) {
+          text.fontName = targetFontName;
+        } else {
+          throw new Error("fontFamily was empty, using fallback.");
+        }
       } catch (fontError) {
-        console.error(`❌ Error applying font ${targetFontName.family} ${targetFontName.style}. Falling back.`, fontError);
+        console.error(`❌ Error applying font ${targetFontName.family} ${targetFontName.style}. Was it loaded? Falling back.`, fontError);
         await figma.loadFontAsync({ family: "Inter", style: "Regular" });
         text.fontName = { family: "Inter", style: "Regular" };
       }
 
       container.appendChild(text);
       text.characters = nodeInstruction.characters;
-      text.fontSize = style.fontSize;
+
+      const fontSize = style.fontSize;
+      if (fontSize && fontSize >= 1) {
+        text.fontSize = fontSize;
+      } else {
+        console.warn(`  ⚠️ Invalid fontSize (${fontSize}) for node "${nodeInstruction.name}". Using default 12.`);
+        text.fontSize = 12;
+      }
 
       if (style.color) {
         text.fills = [{ type: 'SOLID', color: { r: style.color.r, g: style.color.g, b: style.color.b } }];
@@ -170,14 +197,109 @@ async function createDesign(payload: ServerPayload) {
       text.x = placement.x;
       text.y = placement.y;
 
-      console.log(`  ✅ Node "${text.name}" created at (${text.x}, ${text.y})`);
+      console.log(`  ✅ Node "${nodeInstruction.name}" created at (${text.x}, ${text.y})`);
 
     } catch (err) {
       console.error(`❌ Error processing node "${nodeInstruction.name}":`, err);
     }
   }
 
+  // --- 4. Create Logo Instances ---
+  console.log(`🖼️ Processing ${logoInstructions.length} logos...`);
+  for (const logoInstruction of logoInstructions) {
+    console.log(`  Creating logo: ${logoInstruction.name}`);
+    if (!logoInstruction.componentKey) {
+      console.warn(`    ⚠️ Skipping logo "${logoInstruction.name}" - Missing componentKey in instruction.`);
+      continue;
+    }
+    try {
+      // Import the component using the key
+      console.log(`    🔄 Importing component key: ${logoInstruction.componentKey}`);
+      const component = await figma.importComponentByKeyAsync(logoInstruction.componentKey);
+      
+      // Create an instance of the component
+      const instance = component.createInstance();
+      instance.name = logoInstruction.name; // Set name
+      container.appendChild(instance); // Add to container
+
+      // Apply dimensions (Resize the instance)
+      if (logoInstruction.dimensions) {
+        instance.resize(logoInstruction.dimensions.width, logoInstruction.dimensions.height);
+        console.log(`    📏 Resized to ${logoInstruction.dimensions.width}x${logoInstruction.dimensions.height}`);
+      }
+
+      // Apply placement
+      if (logoInstruction.placement) {
+        instance.x = logoInstruction.placement.x;
+        instance.y = logoInstruction.placement.y;
+        console.log(`    📍 Placed at (${instance.x}, ${instance.y})`);
+      }
+      
+      // TODO: Handle alignment if needed later
+
+      console.log(`    ✅ Logo instance "${instance.name}" created.`);
+
+    } catch (err) {
+      console.error(`❌ Error processing logo "${logoInstruction.name}" with key "${logoInstruction.componentKey}":`, err);
+    }
+  }
+
   console.log('✅ Design creation complete.');
+}
+
+// <<< NEW FUNCTION: Create Frames from Specs >>>
+function createFramesFromSpecs(frameData: { name: string, width: number, height: number }[]) {
+  console.log(`📐 Creating ${frameData.length} frames from CSV data...`);
+  
+  // Simple layout variables
+  const startX = 100;
+  const startY = figma.currentPage.children.length * 100 + 300; // Start below existing content
+  const spacingX = 50;
+  const spacingY = 50;
+  let currentX = startX;
+  let currentY = startY;
+  let rowMaxHeight = 0;
+  const wrapWidth = figma.viewport.bounds.width * 0.8; // Wrap roughly within viewport width
+
+  for (const spec of frameData) {
+    console.log(`  Creating frame: ${spec.name} (${spec.width}x${spec.height})`);
+    try {
+      const frame = figma.createFrame();
+      frame.name = spec.name; // Use name from CSV
+      frame.resize(spec.width, spec.height);
+      frame.x = currentX;
+      frame.y = currentY;
+      // Simple white fill
+      frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }]; 
+      // Add stroke for visibility
+      frame.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
+      frame.strokeWeight = 1;
+
+      figma.currentPage.appendChild(frame);
+
+      // Update layout position for next frame
+      currentX += frame.width + spacingX;
+      rowMaxHeight = Math.max(rowMaxHeight, frame.height);
+
+      // Wrap to next row if needed
+      if (currentX > startX + wrapWidth) {
+        currentX = startX;
+        currentY += rowMaxHeight + spacingY;
+        rowMaxHeight = 0; // Reset for new row
+      }
+
+    } catch (err) {
+      console.error(`❌ Error creating frame "${spec.name}":`, err);
+      // Optionally notify UI: figma.ui.postMessage({ type: 'error', ... });
+    }
+  }
+
+  console.log('✅ Frame creation from CSV complete.');
+  // Notify UI of completion (optional)
+  figma.ui.postMessage({
+    type: 'csv-frames-created',
+    message: `Created ${frameData.length} frames.`
+  });
 }
 
 // --- LISTEN FOR UI MESSAGE TRIGGERED BY WEBSOCKET ---
@@ -198,6 +320,16 @@ figma.ui.onmessage = async (msg) => {
       figma.ui.postMessage({ type: 'status', message: 'Design updated via WebSocket!' });
     } else {
       console.warn('⚠️ Invalid or empty payload received via WebSocket:', payload);
+    }
+  }
+
+  // <<< ADDED: Handle new message type >>>
+  if (msg.type === 'create-frames-from-csv') {
+    console.log('Received create-frames-from-csv message');
+    if (msg.data && Array.isArray(msg.data)) {
+        createFramesFromSpecs(msg.data);
+    } else {
+        console.error('Invalid data received for frame creation:', msg.data);
     }
   }
 };

@@ -37,6 +37,7 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      max-height: 450px;
     }
 
     .chat-messages {
@@ -75,18 +76,25 @@
       gap: 8px;
       padding: 16px;
       border-top: 1px solid #E5E5E5;
+      align-items: flex-end;
     }
 
-    input {
+    textarea {
       flex: 1;
       padding: 8px 12px;
       border: 1px solid #E5E5E5;
       border-radius: 6px;
       font-size: 13px;
+      font-family: inherit;
+      line-height: 1.4;
+      min-height: 20px;
+      max-height: 150px;
+      resize: vertical;
       outline: none;
+      box-sizing: border-box;
     }
 
-    input:focus {
+    textarea:focus {
       border-color: #18A0FB;
     }
 
@@ -100,6 +108,7 @@
       font-weight: 500;
       cursor: pointer;
       transition: background-color 0.2s;
+      height: 38px;
     }
 
     button:hover {
@@ -130,14 +139,54 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+
+    /* NEW: Styles for CSV section */
+    .csv-section {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #E5E5E5;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .csv-section label {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    #csv-status {
+      font-size: 12px;
+      color: #666;
+      min-height: 16px; /* Reserve space */
+    }
+
+    /* Style file input button-like */
+    input[type="file"]::file-selector-button {
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      background-color: #eee;
+      transition: background-color .2s ease-in-out;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    input[type="file"]::file-selector-button:hover {
+      background-color: #ddd;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div>
-      <h2>MCP Design System Token Sync</h2>
+      <h2>Talk to your design system</h2> 
+      
       <p class="description">
-        Synchronize design tokens from your MCP Design System to Figma styles.
+        Tell the AI you want from from your design system. <br>
+        Be specific or get creative.
       </p>
     </div>
     
@@ -148,10 +197,19 @@
         </div>
       </div>
       <div class="input-container">
-        <input type="text" id="user-input" placeholder="Type your message..." />
+        <textarea id="user-input" placeholder="Type your message... (Shift+Enter for new line)" rows="2"></textarea>
         <button id="submit">Send</button>
       </div>
     </div>
+
+    <div class="csv-section">
+      <h2>Create Frames from CSV</h2>
+      <label for="csv-file-input">Select CSV File:</label>
+      <input type="file" id="csv-file-input" accept=".csv" />
+      <button id="create-frames-button">Create Frames</button>
+      <div id="csv-status"></div> <!-- For status messages -->
+    </div>
+
   </div>
 
   <script>
@@ -230,14 +288,146 @@
         addMessage('🔌 Disconnected from WebSocket server');
       };
 
-
-
     submitButton.onclick = handleSubmit;
-    userInput.onkeypress = (e) => {
-      if (e.key === 'Enter') {
+    userInput.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
         handleSubmit();
       }
     };
+
+    // <<< NEW Selectors >>>
+    const csvFileInput = document.getElementById('csv-file-input');
+    const createFramesButton = document.getElementById('create-frames-button');
+    const csvStatus = document.getElementById('csv-status');
+
+    // <<< NEW CSV Parsing Logic >>>
+    function parseCSV(csvText) {
+      const lines = csvText.trim().split(/\r?\n/); // Split lines, handle Windows/Unix endings
+      if (lines.length < 2) {
+        throw new Error("CSV needs at least a header and one data row.");
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim());
+      
+      // <<< ADDED: Log the full headers array found >>>
+      console.log("Detected headers:", headers);
+
+      // <<< Use exact names confirmed by user >>>
+      const nameIndex = headers.indexOf('Naming Convention'); 
+      const specsIndex = headers.indexOf('Production Specs');
+
+      if (nameIndex === -1 || specsIndex === -1) {
+        // Provide a more helpful error, including the names it looked for
+        let missing = [];
+        if (nameIndex === -1) missing.push('"Naming Convention "'); // Show expected name
+        if (specsIndex === -1) missing.push('"Production Specs"');
+        throw new Error(`Required columns missing: ${missing.join(' and ')}. Found headers: ${headers.join(', ')}`);
+      }
+
+      const frameData = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cells = lines[i].split(',').map(c => c.trim());
+        if (cells.length <= Math.max(nameIndex, specsIndex)) {
+          console.warn(`Skipping row ${i + 1}: Not enough cells.`);
+          continue; // Skip rows with too few cells
+        }
+
+        const name = cells[nameIndex];
+        const specs = cells[specsIndex];
+        
+        if (!name || !specs) {
+            console.warn(`Skipping row ${i+1}: Missing name or specs.`);
+            continue;
+        }
+
+        // Parse specs like "WidthxHeight"
+        const dims = specs.toLowerCase().split('x');
+        if (dims.length !== 2) {
+          console.warn(`Skipping row ${i + 1}: Invalid specs format '${specs}' for ${name}. Expected 'WidthxHeight'.`);
+          continue;
+        }
+
+        const width = parseInt(dims[0], 10);
+        const height = parseInt(dims[1], 10);
+
+        if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0) {
+          console.warn(`Skipping row ${i + 1}: Invalid dimensions ${width}x${height} for ${name}.`);
+          continue;
+        }
+
+        frameData.push({ name, width, height });
+      }
+
+      return frameData;
+    }
+
+    // <<< NEW Event Listener for Create Frames Button >>>
+    createFramesButton.onclick = () => {
+      const file = csvFileInput.files[0];
+      if (!file) {
+        csvStatus.textContent = 'Please select a CSV file first.';
+        return;
+      }
+
+      csvStatus.textContent = 'Reading file...';
+      createFramesButton.disabled = true;
+
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        try {
+          const csvText = event.target.result;
+          csvStatus.textContent = 'Parsing CSV...';
+          const parsedData = parseCSV(csvText);
+          
+          if (parsedData.length === 0) {
+              csvStatus.textContent = 'No valid frame data found in CSV.';
+              createFramesButton.disabled = false;
+              return;
+          }
+          
+          csvStatus.textContent = `Parsed ${parsedData.length} frames. Sending to Figma...`;
+
+          // Send data to code.ts
+          parent.postMessage({
+            pluginMessage: {
+              type: 'create-frames-from-csv',
+              data: parsedData
+            }
+          }, '*');
+          
+          // Optionally clear status after a delay or wait for confirmation
+          setTimeout(() => { csvStatus.textContent = 'Instructions sent.'; }, 2000);
+
+        } catch (error) {
+          console.error('Error parsing CSV:', error);
+          csvStatus.textContent = `Error: ${error.message}`;
+        } finally {
+          createFramesButton.disabled = false; // Re-enable button
+          csvFileInput.value = null; // Clear file input
+        }
+      };
+
+      reader.onerror = (event) => {
+        console.error('Error reading file:', event.target.error);
+        csvStatus.textContent = 'Error reading file.';
+        createFramesButton.disabled = false;
+        csvFileInput.value = null; 
+      };
+
+      reader.readAsText(file);
+    };
+    
+    // Add listener for completion status from code.ts (optional)
+    // window.onmessage = (event) => { 
+    //    ... handle chat ... 
+    //    if (msg.type === 'csv-frames-created') {
+    //        csvStatus.textContent = msg.message;
+    //        createFramesButton.disabled = false;
+    //    }
+    // };
+
   </script>
 </body>
 </html> 
