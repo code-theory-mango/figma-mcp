@@ -376,10 +376,11 @@ async function createFramesFromSpecs(frameData: { name: string, width: number, h
 function sendSelectionUpdate() {
   const selectedFrames = figma.currentPage.selection.filter(
     node => node.type === 'FRAME'
-  ) as FrameNode[]; // Filter for frames
+  ) as FrameNode[]; 
   
   const selectedNames = selectedFrames.map(frame => frame.name);
-  console.log('📤 Sending selection update to UI:', selectedNames);
+  // <<< COMMENTED OUT this log >>>
+  // console.log('📤 Sending selection update to UI:', selectedNames);
   
   figma.ui.postMessage({
     type: 'update-selection',
