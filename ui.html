@@ -282,7 +282,8 @@
         parent.postMessage({ 
           pluginMessage: { 
             type: 'chat-message',
-            message: message
+            message: message,
+            figmaFrame: currentSelectionDetails
           }
         }, '*');
       }

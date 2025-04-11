@@ -431,13 +431,73 @@ figma.ui.onmessage = async (msg) => {
     }
   }
 
-  // <<< ADDED: Handle new message type >>>
-  if (msg.type === 'create-frames-from-csv') {
+  if (msg.type === 'chat-message') {
+    console.log("Received chat message from UI:", msg.message);
+    console.log("Received frame data with message:", msg.figmaFrame); // Updated log
+    
+    const userMessage = msg.message;
+    const frameData = msg.figmaFrame || []; // Get frame data from message
+    const n8nWebhookUrl = 'https://candt.app.n8n.cloud/webhook-test/6b4b51bb-bb8a-4207-b57e-1cbc27eb583c'; 
+
+    figma.ui.postMessage({ type: 'status', message: 'Sending message and frame data to n8n...' }); // Update status text
+
+    try {
+      console.log(`🚀 Sending message and frame data to n8n webhook: ${n8nWebhookUrl}`);
+      const response = await fetch(n8nWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          message: userMessage, 
+          figmaFrame: frameData // Use the new key name here
+        })
+      });
+
+      console.log(`N8N Response Status: ${response.status}`);
+
+      if (!response.ok) {
+        // Try to get error details from n8n response if possible
+        let errorDetails = '';
+        try {
+           errorDetails = await response.text(); // Or response.json() if n8n sends JSON errors
+           console.error("N8N Error Response Body:", errorDetails);
+        } catch (parseError) { /* Ignore if body can't be read/parsed */ }
+        throw new Error(`N8N webhook failed with status ${response.status}. ${errorDetails}`);
+      }
+
+      // Success message - n8n received it (doesn't mean processing is done)
+      figma.ui.postMessage({ 
+         type: 'chat-response', 
+         message: 'Message sent to n8n successfully.' 
+      });
+      // Re-enable UI button via chat-response message in ui.html
+
+    } catch (error) {
+      console.error('❌ Error sending message to n8n:', error);
+      // Send error back to UI
+      let errorMessage = 'Unknown error occurred';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      figma.ui.postMessage({ 
+         type: 'chat-response', // Use chat-response to display error
+         message: `Error sending message: ${errorMessage}`
+      });
+       // Re-enable UI button via chat-response message in ui.html
+    }
+
+  } else if (msg.type === 'create-frames-from-csv') {
     console.log('Received create-frames-from-csv message');
     if (msg.data && Array.isArray(msg.data)) {
         createFramesFromSpecs(msg.data);
     } else {
         console.error('Invalid data received for frame creation:', msg.data);
     }
+  } else if (msg.type === 'update-selection-details') {
+    // This case is just for receiving selection details from code.ts within ui.html,
+    // code.ts itself doesn't need to handle receiving this type from ui.html.
+    // The message originates *from* code.ts, triggered by figma.on('selectionchange').
+    // No action needed here unless the UI needs to send selection changes *back*.
   }
 };
