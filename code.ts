@@ -378,13 +378,22 @@ function sendSelectionUpdate() {
     node => node.type === 'FRAME'
   ) as FrameNode[]; 
   
-  const selectedNames = selectedFrames.map(frame => frame.name);
-  // <<< COMMENTED OUT this log >>>
-  // console.log('📤 Sending selection update to UI:', selectedNames);
+  // <<< MAP to include details >>>
+  const frameDetails = selectedFrames.map(frame => ({
+    name: frame.name,
+    id: frame.id, // Also include ID, might be useful later
+    width: frame.width,
+    height: frame.height,
+    x: frame.x,
+    y: frame.y
+  }));
   
+  // console.log('📤 Sending selection details to UI:', frameDetails); // Optional log
+  
+  // <<< Use NEW message type and send details >>>
   figma.ui.postMessage({
-    type: 'update-selection',
-    names: selectedNames
+    type: 'update-selection-details', 
+    frames: frameDetails // Send the array of objects
   });
 }
 

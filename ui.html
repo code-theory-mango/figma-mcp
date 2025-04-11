@@ -257,6 +257,12 @@
     const chatMessages = document.getElementById('chat-messages');
     const userInput = document.getElementById('user-input');
     const submitButton = document.getElementById('submit');
+    const csvFileInput = document.getElementById('csv-file-input');
+    const createFramesButton = document.getElementById('create-frames-button');
+    const csvStatus = document.getElementById('csv-status');
+    const selectedNamesSpan = document.getElementById('selected-names');
+    const selectionCountSpan = document.getElementById('selection-count');
+    let currentSelectionDetails = [];
 
     function addMessage(message, isUser = false) {
       const messageDiv = document.createElement('div');
@@ -285,6 +291,31 @@
     // Listen for messages from the plugin code
     window.onmessage = (event) => {
       const msg = event.data.pluginMessage;
+      
+      if (msg.type === 'update-selection-details') {
+        const frames = msg.frames || []; 
+        currentSelectionDetails = frames; 
+        const count = frames.length;
+        const names = frames.map(f => f.name); 
+
+        // Update count display - Now safe to use selectionCountSpan
+        selectionCountSpan.textContent = count;
+
+        if (count > 0) {
+          // Format names for display (same logic as before)
+          const formattedHtml = names.map((name, index) => {
+            const truncatedName = name.length > 50 
+                                ? name.substring(0, 50) + '...' 
+                                : name;
+            return `<div><span class="red-number">${index + 1}.</span> ${truncatedName}</div>`; 
+          }).join(''); 
+          selectedNamesSpan.innerHTML = formattedHtml;
+        } else {
+          selectedNamesSpan.textContent = 'None'; 
+        }
+        
+        console.log('Received selection details:', currentSelectionDetails);
+      }
       
       if (msg.type === 'chat-response') {
         addMessage(msg.message);
@@ -362,11 +393,6 @@
         handleSubmit();
       }
     };
-
-    // <<< NEW Selectors >>>
-    const csvFileInput = document.getElementById('csv-file-input');
-    const createFramesButton = document.getElementById('create-frames-button');
-    const csvStatus = document.getElementById('csv-status');
 
     // <<< NEW CSV Parsing Logic >>>
     function parseCSV(csvText) {
