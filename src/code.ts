@@ -194,6 +194,118 @@ figma.ui.onmessage = async (msg: UIMessage | any) => { // Add basic type to msg
         figma.notify('Invalid data format received from CSV.', { error: true });
     }
   } 
+  // <<< NEW: Handle sending credentials to n8n >>>
+  else if (msg.type === 'send-credentials-to-n8n') {
+    const apiKey = msg.apiKey;
+    const manualFileKeyInput = msg.manualFileKey; // Input from UI (could be key or URL)
+
+    if (!apiKey) {
+      console.error('❌ API Key missing in message from UI.');
+      figma.ui.postMessage({ 
+          type: 'credential-status', 
+          text: 'Error: API Key was missing.',
+          isError: true 
+        });
+      return;
+    }
+
+    let fileKeyToSend: string | null = null;
+    let fileNameToSend: string | null = 'N/A';
+
+    // Check if a manual file key/URL was provided
+    if (manualFileKeyInput) {
+      console.log('ℹ️ Manual File Key/URL provided:', manualFileKeyInput);
+      // Attempt to extract file key if it looks like a URL
+      try {
+        const url = new URL(manualFileKeyInput);
+        const pathParts = url.pathname.split('/');
+        const fileIndex = pathParts.indexOf('file');
+        if (fileIndex !== -1 && fileIndex + 1 < pathParts.length) {
+          fileKeyToSend = pathParts[fileIndex + 1];
+          fileNameToSend = `Manually Entered (from URL)`;
+          console.log(`Extracted File Key from URL: ${fileKeyToSend}`);
+        } else {
+          // Assume the input *was* the key itself if URL parsing fails to find it
+          fileKeyToSend = manualFileKeyInput; 
+          fileNameToSend = 'Manually Entered (as Key)';
+          console.log(`Using provided input as File Key: ${fileKeyToSend}`);
+        }
+      } catch (e) {
+        // If it's not a valid URL, assume the input was the key itself
+        fileKeyToSend = manualFileKeyInput; 
+        fileNameToSend = 'Manually Entered (as Key)';
+        console.log(`Input is not a URL, using as File Key: ${fileKeyToSend}`);
+      }
+    } else {
+      console.log('ℹ️ No manual file key provided, using current file.');
+      // Use the currently open Figma file
+      const currentFileKey = figma.fileKey; // Assign to temp variable
+      if (currentFileKey) { // Check if it's defined
+          fileKeyToSend = currentFileKey;
+          fileNameToSend = figma.root.name;
+      } else {
+        // Handle case where fileKey is undefined
+        fileKeyToSend = null; // Explicitly set to null
+        console.error('❌ Could not get file key for the current Figma file.');
+        figma.notify('Error: Could not identify the current Figma file.', { error: true });
+         figma.ui.postMessage({ 
+            type: 'credential-status', 
+            text: 'Error: Could not identify current Figma file.',
+            isError: true 
+          });
+        return; // Stop if we can't get the current file key
+      }
+      console.log(`Using current file: ${fileNameToSend} (${fileKeyToSend})`);
+    }
+
+    // TODO: Replace with your actual webhook URL for credentials
+    const credentialsWebhookUrl = 'https://your-n8n-instance.com/webhook/your-credentials-path'; 
+    console.log(`🚀 Sending API Key to credentials webhook: ${credentialsWebhookUrl}`);
+    figma.notify('Sending credentials...', { timeout: 1000 });
+
+    try {
+      const response = await fetch(credentialsWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Send API key and the determined file info
+        body: JSON.stringify({ 
+            apiKey: apiKey, 
+            fileKey: fileKeyToSend,
+            fileName: fileNameToSend 
+        })
+      });
+
+      console.log(`Credentials Webhook Response Status: ${response.status}`);
+
+      if (!response.ok) {
+        let errorDetails = '';
+        try { 
+          errorDetails = await response.text(); 
+          console.error("Credentials Webhook Error Body:", errorDetails);
+        } catch { /* Ignore */ }
+        throw new Error(`Credentials webhook failed with status ${response.status}. ${errorDetails}`);
+      }
+
+      // Send success feedback to UI
+      figma.ui.postMessage({ 
+          type: 'credential-status', 
+          text: 'Credentials sent successfully!',
+          isError: false
+        });
+      figma.notify('Credentials sent successfully.', { timeout: 1500 });
+
+    } catch (error) {
+      console.error('❌ Error sending credentials to webhook:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      // Send error feedback to UI
+      figma.ui.postMessage({ 
+          type: 'credential-status', 
+          text: `Error: ${errorMessage}`,
+          isError: true 
+        });
+      figma.notify(`Error sending credentials: ${errorMessage}`, { error: true });
+    }
+  }
   // --- Ignore messages originating from code.ts ---
   // else if (msg.type === 'update-selection-details') {
   //   // No action needed here, message originates from code.ts

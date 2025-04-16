@@ -347,7 +347,7 @@
           console.log("Received frame data:", msg.figmaFrame);
           const userMessage = msg.message;
           const frameData = msg.figmaFrame || [];
-          const n8nWebhookUrl = "https://your-n8n-instance.com/webhook/your-path";
+          const n8nWebhookUrl = "https://esme-mango.app.n8n.cloud/mcp-test/788ddf79-c150-4508-b967-07f7b61dc9aa/sse";
           figma.notify("Sending message to backend...", { timeout: 1e3 });
           try {
             console.log(`\u{1F680} Sending message and frame data to webhook: ${n8nWebhookUrl}`);
@@ -386,6 +386,99 @@
           } else {
             console.error("\u274C Invalid data received for frame creation:", msg.data);
             figma.notify("Invalid data format received from CSV.", { error: true });
+          }
+        } else if (msg.type === "send-credentials-to-n8n") {
+          const apiKey = msg.apiKey;
+          const manualFileKeyInput = msg.manualFileKey;
+          if (!apiKey) {
+            console.error("\u274C API Key missing in message from UI.");
+            figma.ui.postMessage({
+              type: "credential-status",
+              text: "Error: API Key was missing.",
+              isError: true
+            });
+            return;
+          }
+          let fileKeyToSend = null;
+          let fileNameToSend = "N/A";
+          if (manualFileKeyInput) {
+            console.log("\u2139\uFE0F Manual File Key/URL provided:", manualFileKeyInput);
+            try {
+              const url = new URL(manualFileKeyInput);
+              const pathParts = url.pathname.split("/");
+              const fileIndex = pathParts.indexOf("file");
+              if (fileIndex !== -1 && fileIndex + 1 < pathParts.length) {
+                fileKeyToSend = pathParts[fileIndex + 1];
+                fileNameToSend = `Manually Entered (from URL)`;
+                console.log(`Extracted File Key from URL: ${fileKeyToSend}`);
+              } else {
+                fileKeyToSend = manualFileKeyInput;
+                fileNameToSend = "Manually Entered (as Key)";
+                console.log(`Using provided input as File Key: ${fileKeyToSend}`);
+              }
+            } catch (e) {
+              fileKeyToSend = manualFileKeyInput;
+              fileNameToSend = "Manually Entered (as Key)";
+              console.log(`Input is not a URL, using as File Key: ${fileKeyToSend}`);
+            }
+          } else {
+            console.log("\u2139\uFE0F No manual file key provided, using current file.");
+            const currentFileKey = figma.fileKey;
+            if (currentFileKey) {
+              fileKeyToSend = currentFileKey;
+              fileNameToSend = figma.root.name;
+            } else {
+              fileKeyToSend = null;
+              console.error("\u274C Could not get file key for the current Figma file.");
+              figma.notify("Error: Could not identify the current Figma file.", { error: true });
+              figma.ui.postMessage({
+                type: "credential-status",
+                text: "Error: Could not identify current Figma file.",
+                isError: true
+              });
+              return;
+            }
+            console.log(`Using current file: ${fileNameToSend} (${fileKeyToSend})`);
+          }
+          const credentialsWebhookUrl = "https://your-n8n-instance.com/webhook/your-credentials-path";
+          console.log(`\u{1F680} Sending API Key to credentials webhook: ${credentialsWebhookUrl}`);
+          figma.notify("Sending credentials...", { timeout: 1e3 });
+          try {
+            const response = yield fetch(credentialsWebhookUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              // Send API key and the determined file info
+              body: JSON.stringify({
+                apiKey,
+                fileKey: fileKeyToSend,
+                fileName: fileNameToSend
+              })
+            });
+            console.log(`Credentials Webhook Response Status: ${response.status}`);
+            if (!response.ok) {
+              let errorDetails = "";
+              try {
+                errorDetails = yield response.text();
+                console.error("Credentials Webhook Error Body:", errorDetails);
+              } catch (e) {
+              }
+              throw new Error(`Credentials webhook failed with status ${response.status}. ${errorDetails}`);
+            }
+            figma.ui.postMessage({
+              type: "credential-status",
+              text: "Credentials sent successfully!",
+              isError: false
+            });
+            figma.notify("Credentials sent successfully.", { timeout: 1500 });
+          } catch (error) {
+            console.error("\u274C Error sending credentials to webhook:", error);
+            const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+            figma.ui.postMessage({
+              type: "credential-status",
+              text: `Error: ${errorMessage}`,
+              isError: true
+            });
+            figma.notify(`Error sending credentials: ${errorMessage}`, { error: true });
           }
         } else {
           console.log("\u2753 Unknown message type received in code.ts:", msg.type);

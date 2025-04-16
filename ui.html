@@ -251,6 +251,20 @@
       <div id="csv-status"></div> <!-- For status messages -->
     </div>
 
+    <!-- <<< NEW: Design System Connection Section >>> -->
+    <div class="ds-connection-section csv-section"> <!-- Re-use csv-section style for spacing/border -->
+      <h2>Design System Connection</h2>
+      <label for="api-key-input">API Key:</label>
+      <input type="text" id="api-key-input" placeholder="Enter your API Key" />
+      
+      <label for="ds-file-key-input">Design System File Key (Optional):</label>
+      <input type="text" id="ds-file-key-input" placeholder="Leave empty to use current file" />
+      
+      <button id="send-credentials-button">Connect & Send Credentials</button>
+      <div id="credentials-status"></div> <!-- For status messages -->
+    </div>
+    <!-- <<< END NEW SECTION >>> -->
+
   </div>
 
   <script>
@@ -263,6 +277,12 @@
     const selectedNamesSpan = document.getElementById('selected-names');
     const selectionCountSpan = document.getElementById('selection-count');
     let currentSelectionDetails = [];
+
+    // <<< NEW: Credential Elements >>>
+    const apiKeyInput = document.getElementById('api-key-input');
+    const dsFileKeyInput = document.getElementById('ds-file-key-input'); // Added file key input
+    const sendCredentialsButton = document.getElementById('send-credentials-button');
+    const credentialsStatus = document.getElementById('credentials-status');
 
     function addMessage(message, isUser = false) {
       const messageDiv = document.createElement('div');
@@ -347,6 +367,12 @@
         } else {
           selectedNamesSpan.textContent = 'None'; 
         }
+      }
+
+      // <<< NEW: Handle credential status messages >>>
+      if (msg.type === 'credential-status') {
+        credentialsStatus.textContent = msg.text;
+        credentialsStatus.style.color = msg.isError ? 'red' : 'green';
       }
     };
   
@@ -521,6 +547,30 @@
     //        createFramesButton.disabled = false;
     //    }
     // };
+
+    // --- NEW: Credential Sending Logic ---
+    sendCredentialsButton.addEventListener('click', () => {
+      const apiKey = apiKeyInput.value.trim();
+      const manualFileKey = dsFileKeyInput.value.trim(); // Read the file key input
+
+      if (!apiKey) {
+        credentialsStatus.textContent = 'Please enter an API Key.';
+        credentialsStatus.style.color = 'red';
+        return;
+      }
+
+      credentialsStatus.textContent = 'Sending credentials...';
+      credentialsStatus.style.color = '#666';
+
+      // Send credentials and potentially the manual file key to the plugin backend (code.ts)
+      parent.postMessage({ 
+          pluginMessage: { 
+              type: 'send-credentials-to-n8n', 
+              apiKey: apiKey,
+              manualFileKey: manualFileKey // Send file key (even if empty)
+            }
+         }, '*');
+    });
 
   </script>
 </body>
