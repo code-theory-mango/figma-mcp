@@ -1,0 +1,19 @@
+.
+├── README.md
+├── dist
+│   ├── code.js         # Bundled plugin code (Output of 'npm run build')
+│   └── server.js       # Compiled server code (Output of 'npm run build:server')
+├── figma asset directory - Sheet1.csv # Example data
+├── manifest.json       # Figma plugin manifest
+├── package-lock.json
+├── package.json
+├── server.ts           # Server source code
+├── src
+│   ├── code.ts         # Main plugin logic entry point
+│   ├── figma-helpers.ts # Functions interacting with Figma API
+│   └── utils.ts        # General utility functions
+├── tsconfig.json       # TypeScript config for plugin (might not be used by esbuild)
+├── tsconfig.server.json # TypeScript config for server
+└── ui.html             # Plugin UI
+
+2 directories, 14 files
